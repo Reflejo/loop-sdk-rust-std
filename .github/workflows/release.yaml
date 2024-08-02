@@ -1,0 +1,54 @@
+name: Release nightly rust-std
+on:
+  workflow_call:
+    inputs:
+      nightly_version:
+        description: 'The nightly date to use formatted as YYYY-MM-DD, e.g. 2024-08-01'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      nightly_version:
+        description: 'The nightly date to use formatted as YYYY-MM-DD, e.g. 2024-08-01'
+        required: true
+        type: string
+jobs:
+  release:
+    permissions:
+      contents: write
+    name: Release nightly rust-std
+    runs-on: macos-latest
+    env:
+      NIGHTLY_DATE: ${{ inputs.nightly_version }}
+
+    steps:
+      - name: Checkout repo for config.toml
+        uses: actions/checkout@v4
+
+      - name: Download rust nightly source code
+        run: |
+          wget https://static.rust-lang.org/dist/$NIGHTLY_DATE/rustc-nightly-src.tar.gz -O rustc-nightly-src.tar.gz
+          wget https://static.rust-lang.org/dist/$NIGHTLY_DATE/rustc-nightly-src.tar.gz.sha256 -O rustc-nightly-src.tar.gz.sha256
+
+      - name: Check tarball checksum
+        run: cat rustc-nightly-src.tar.gz.sha256 | shasum --check --status
+
+      - name: Uncompress rustc nightly src
+        run: |
+          tar xzf rustc-nightly-src.tar.gz
+          cp config.toml rustc-nightly-src/
+
+      - name: Build rust std
+        run: |
+          cd rustc-nightly-src/
+          ./x.py dist rust-std --stage 2
+
+      - name: Create github release with tarballs
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$NIGHTLY_DATE" \
+            --target "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "rustc-nightly-src/build/dist/rust-std-nightly-aarch64-apple-ios.tar.xz" \
+            "rustc-nightly-src/build/dist/rust-std-nightly-aarch64-apple-ios-sim.tar.xz"
